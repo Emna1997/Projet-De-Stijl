@@ -27,7 +27,7 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_TBATTERYCHECKING 20
-
+#define PRIORITY_TLOSTTRACKING 20
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -128,6 +128,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_losttracking, "th_lostchecking", 0, PRIORITY_TLOSTTRACKING, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -172,7 +176,11 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_batterychecking, (void(*)(void*)) & Tasks::CheckingBatteryTask, this)) {
+    if (err = rt_task_start(&th_batterychecking, (void(*)(void*)) & Tasks::CheckBatteryTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_losttracking, (void(*)(void*)) & Tasks::LostTrackingTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -269,6 +277,10 @@ void Tasks::ReceiveFromMonTask(void *arg) {
 
         if (msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
             delete(msgRcv);
+            cout << "Lost received message" << endl << flush;
+            /*TO DO : Stop robot, communication, close the server, disconnect camera -> reset all*/
+            
+            /*TO DO*/
             exit(-1);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
             rt_sem_v(&sem_openComRobot);
@@ -321,6 +333,50 @@ void Tasks::OpenComRobot(void *arg) {
     }
 }
 
+/**
+ * @brief Thread tracking the lost communication between superviser and robot.
+ */
+void LostTrackingTask(void *arg){
+      
+    int status;
+    int err;
+    int cmpt = 0;
+    Message * msgRcv,msg;
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task openComRobot starts here                                                  */
+    /**************************************************************************************/
+    while(cmpt<=3){
+        msgRcv = monitor.Read();
+        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+        msg = robot.Write(msgRcv);
+        rt_mutex_release(&mutex_robot);
+        cout << msg ->GetID();
+        cout << ")" << endl;
+        if(msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
+            cmpt = 0;
+        }else{
+            cmpt ++;
+        }
+    }
+    cout << "Communication lost" << endl << flush;
+    Message * msgSend = new Message(LOST_DMB);
+    rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+    monitor.Write(msgSend);
+    rt_mutex_release(&mutex_monitor);
+    rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+    robot.Close();
+    rt_mutex_release(&mutex_robot);
+    cout << "Initialize communication robot" << endl << flush;
+    /*TO DO : initialize communication*/
+    
+    
+}
+    
+    
 /**
  * @brief Thread starting the communication with the robot.
  */
@@ -395,7 +451,7 @@ void Tasks::MoveTask(void *arg) {
 /**
  * @brief Thread handling control of the battery
  */
-void Tasks::CheckingBatteryTask(void *arg) {
+void Tasks::CheckBatteryTask(void *arg) {
     int rs;
     int cpMove;
     

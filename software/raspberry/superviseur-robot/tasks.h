@@ -77,6 +77,7 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_batterychecking;
+    RT_TASK th_losttracking;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -124,6 +125,11 @@ private:
     void OpenComRobot(void *arg);
 
     /**
+     * @brief Thread tracking the lost communication between superviser and robot.
+     */
+    void LostTrackingTask(void *arg);
+    
+    /**
      * @brief Thread starting the communication with the robot.
      */
     void StartRobotTask(void *arg);
@@ -136,7 +142,7 @@ private:
     /**
     * @brief Thread handling control of the battery
     */
-    void CheckingBatteryTask(void *arg);
+    void CheckBatteryTask(void *arg);
     /**********************************************************************/
     /* Queue services                                                     */
     /**********************************************************************/
