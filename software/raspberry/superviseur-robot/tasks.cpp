@@ -26,6 +26,7 @@
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
+#define PRIORITY_TBATTERYCHECKING 20
 
 /*
  * Some remarks:
@@ -123,6 +124,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_batterychecking, "th_batterychecking", 0, PRIORITY_TBATTERYCHECKING, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -167,7 +172,10 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-
+    if (err = rt_task_start(&th_batterychecking, (void(*)(void*)) & Tasks::CheckingBatteryTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks launched" << endl << flush;
 }
 
@@ -383,6 +391,48 @@ void Tasks::MoveTask(void *arg) {
     }
 }
 
+
+/**
+ * @brief Thread handling control of the battery
+ */
+void Tasks::CheckingBatteryTask(void *arg) {
+    int rs;
+    int cpMove;
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task starts here                                                               */
+    /**************************************************************************************/
+    rt_task_set_periodic(NULL, TM_NOW, 500000000);
+
+    while (1) {
+        Message * msgSend;
+        rt_task_wait_period(NULL);
+        cout << "Periodic battery update";
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        rs = robotStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        if (rs == 1) {
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            msgSend = robot.Write(robot.GetBattery());
+            rt_mutex_release(&mutex_robot);
+            cout << msgSend ->GetID();
+            cout << ")" << endl;
+            cout << "Battery answer: " << msgSend->ToString() << endl << flush;
+            cout << "Send battery level to mon: " << msgSend->ToString() << endl << flush;
+            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(msgSend); // The message is deleted with the Write
+            rt_mutex_release(&mutex_monitor);
+                    
+        }
+        cout << endl << flush;
+    }
+}
+
+
 /**
  * Write a message in a given queue
  * @param queue Queue identifier
@@ -413,44 +463,4 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
     } /**/
 
     return msg;
-}
-
-/**
- * @brief Thread handling control of the battery
- */
-void Tasks::CheckingBatteryTask(void *arg) {
-    int rs;
-    int cpMove;
-    
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-    // Synchronization barrier (waiting that all tasks are starting)
-    rt_sem_p(&sem_barrier, TM_INFINITE);
-    
-    /**************************************************************************************/
-    /* The task starts here                                                               */
-    /**************************************************************************************/
-    rt_task_set_periodic(NULL, TM_NOW, 500000000);
-
-    while (1) {
-        Message * msgSend;
-        rt_task_wait_period(NULL);
-        cout << "Periodic battery update";
-        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
-        rs = robotStarted;
-        rt_mutex_release(&mutex_robotStarted);
-        if (rs == 1) {
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            mesgSend = robot.Write(robot.GET_VBAT());
-            rt_mutex_release(&mutex_robot);
-            cout << msgSend ->GetID();
-            cout << ")" << endl;
-            cout << "Battery answer: " << msgSend->ToString() << endl << flush;
-            cout << "Send battery level to mon: " << msg->ToString() << endl << flush;
-            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-            monitor.Write(msgSend); // The message is deleted with the Write
-            rt_mutex_release(&mutex_monitor);
-                    
-        }
-        cout << endl << flush;
-    }
 }
