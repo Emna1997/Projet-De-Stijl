@@ -28,6 +28,7 @@
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_TBATTERYCHECKING 20
 #define PRIORITY_TLOSTTRACKING 20
+
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -74,6 +75,14 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_camera, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_cameraStarted, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -92,6 +101,14 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_sem_create(&sem_startRobot, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_startCamera, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_cameraOk, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -128,7 +145,11 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_losttracking, "th_lostchecking", 0, PRIORITY_TLOSTTRACKING, 0)) {
+    if (err = rt_task_create(&th_losttracking, "th_losttracking", 0, PRIORITY_TLOSTTRACKING, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_startCamera, "th_startCamera", 0, PRIORITY_TCAMERA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -180,7 +201,13 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    /*
     if (err = rt_task_start(&th_losttracking, (void(*)(void*)) & Tasks::LostTrackingTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    */ 
+    if (err = rt_task_start(&th_startCamera, (void(*)(void*)) & Tasks::StartCameraTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -295,6 +322,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
+        } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
+            rt_sem_v(&sem_startCamera);
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -336,8 +365,9 @@ void Tasks::OpenComRobot(void *arg) {
 /**
  * @brief Thread tracking the lost communication between superviser and robot.
  */
-void LostTrackingTask(void *arg){
-      
+void Tasks::LostTrackingTask(void *arg){
+    
+    /*  
     int status;
     int err;
     int cmpt = 0;
@@ -345,12 +375,13 @@ void LostTrackingTask(void *arg){
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
-    
+    */
     /**************************************************************************************/
     /* The task openComRobot starts here                                                  */
     /**************************************************************************************/
+    /*
     while(cmpt<=3){
-        msgRcv = monitor.Read();
+
         rt_mutex_acquire(&mutex_robot, TM_INFINITE);
         msg = robot.Write(msgRcv);
         rt_mutex_release(&mutex_robot);
@@ -371,6 +402,7 @@ void LostTrackingTask(void *arg){
     robot.Close();
     rt_mutex_release(&mutex_robot);
     cout << "Initialize communication robot" << endl << flush;
+    */
     /*TO DO : initialize communication*/
     
     
@@ -488,6 +520,40 @@ void Tasks::CheckBatteryTask(void *arg) {
     }
 }
 
+void Tasks::StartCameraTask(void *arg){
+    int status;
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task startCamera starts here                                                    */
+    /**************************************************************************************/
+    while (1) {
+        
+        rt_sem_p(&sem_startCamera, TM_INFINITE);
+        cout << "Start camera (";
+        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        status = camera.Open();
+        rt_mutex_release(&mutex_camera);
+        //cout << msgSend->GetID();
+        cout << ")" << endl;
+
+        cout << "Open camera (" << status << ")" << endl;
+
+        if (status < 0) throw std::runtime_error {
+            "Unable to start camera "
+        };
+
+        rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+        cameraStarted = 1;
+        rt_mutex_release(&mutex_cameraStarted);
+        
+        cout << "Rock'n'Roll baby, camera started!" << endl << flush;
+        rt_sem_broadcast(&sem_cameraOk);
+    }
+}
 
 /**
  * Write a message in a given queue
