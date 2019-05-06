@@ -81,6 +81,7 @@ private:
     RT_TASK th_batterychecking;
     RT_TASK th_losttracking;
     RT_TASK th_startCamera;
+    RT_TASK th_sendImgToMon;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -155,6 +156,11 @@ private:
     * @brief Thread handling control of the camera
     */
     void StartCameraTask(void *arg);
+    
+    /**
+     * @brief Thread sending image from camera to monitor.
+     */
+    void SendImgToMonTask(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
