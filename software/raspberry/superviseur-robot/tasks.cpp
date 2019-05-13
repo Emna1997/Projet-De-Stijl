@@ -565,11 +565,16 @@ void Tasks::StartCameraTask(void *arg){
         cout << "Camera ok !" << endl;
 
         cout << "Open camera (" << status << ")" << endl;
-
-        if (status < 0) throw std::runtime_error {
-            "Unable to start camera "
-        };
-
+        
+        Message * msgSend;
+        if (status < 0) {
+            cout << "Unable to open the camera !" << endl;
+            msgSend = new Message(MESSAGE_ANSWER_NACK);
+        } else {
+            msgSend = new Message(MESSAGE_ANSWER_ACK);
+        }
+        WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+        
         rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
         cameraStarted = 1;
         rt_mutex_release(&mutex_cameraStarted);
@@ -612,7 +617,7 @@ void Tasks::SendImgToMonTask(void* arg) {
 }
 
 void Tasks::CloseCameraTask(void *arg){
-    
+    int status;
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
@@ -630,7 +635,17 @@ void Tasks::CloseCameraTask(void *arg){
         //cout << msgSend->GetID();
   
         cout << "Camera has closed !! " << endl;
-
+        status =camera.IsOpen(); 
+                
+        Message * msgSend;
+        if (status < 0) {
+            cout << "Unable to open the camera !" << endl;
+            msgSend = new Message(MESSAGE_ANSWER_NACK);
+        } else {
+            msgSend = new Message(MESSAGE_ANSWER_ACK);
+        }
+        WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+        
         rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
         cameraStarted = 0;
         rt_mutex_release(&mutex_cameraStarted);
