@@ -82,6 +82,7 @@ private:
     RT_TASK th_losttracking;
     RT_TASK th_startCamera;
     RT_TASK th_sendImgToMon;
+    RT_TASK th_closeCamera;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -101,7 +102,9 @@ private:
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
     RT_SEM sem_startCamera;
+    RT_SEM sem_closeCamera;
     RT_SEM sem_cameraOk;
+    
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -156,6 +159,11 @@ private:
     * @brief Thread handling control of the camera
     */
     void StartCameraTask(void *arg);
+  
+    /**
+    * @brief Thread handling control of the camera
+    */
+    void CloseCameraTask(void *arg);
     
     /**
      * @brief Thread sending image from camera to monitor.

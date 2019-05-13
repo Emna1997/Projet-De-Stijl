@@ -110,6 +110,10 @@ void Tasks::Init() {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_sem_create(&sem_closeCamera, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     if (err = rt_sem_create(&sem_cameraOk, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
@@ -152,6 +156,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_create(&th_startCamera, "th_startCamera", 0, PRIORITY_TCAMERA, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_closeCamera, "th_closeCamera", 0, PRIORITY_TCAMERA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -214,6 +222,10 @@ void Tasks::Run() {
     }
     */ 
     if (err = rt_task_start(&th_startCamera, (void(*)(void*)) & Tasks::StartCameraTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_closeCamera, (void(*)(void*)) & Tasks::CloseCameraTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -334,6 +346,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_move);
         } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
             rt_sem_v(&sem_startCamera);
+        } else if (msgRcv->CompareID(MESSAGE_CAM_CLOSE)) {
+            rt_sem_v(&sem_closeCamera);
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -560,7 +574,7 @@ void Tasks::StartCameraTask(void *arg){
         cameraStarted = 1;
         rt_mutex_release(&mutex_cameraStarted);
         
-        cout << "Rock'n'Roll baby, camera started!" << endl << flush;
+        cout << "OK baby, camera started!" << endl << flush;
         rt_sem_broadcast(&sem_cameraOk);
     }
 }
@@ -568,8 +582,8 @@ void Tasks::StartCameraTask(void *arg){
  * @brief Thread sending image from camera to monitor.
  */
 void Tasks::SendImgToMonTask(void* arg) {
-    MessageImg * msg;
-    
+    MessageImg msg;
+    int cs;
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
     rt_sem_p(&sem_barrier, TM_INFINITE);
@@ -580,17 +594,52 @@ void Tasks::SendImgToMonTask(void* arg) {
     rt_sem_p(&sem_cameraOk, TM_INFINITE);
 
     while (1) {
-        
-        cout << "wait img to send" << endl << flush;
-        Img imageRcv = camera.Grab();
-        msg->SetImage(&imageRcv);
-        cout << "Send msg to mon: " << msg->ToString() << endl << flush;
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        cs = cameraStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        if(cs==1){
+            cout << "wait img to send" << endl << flush;
+            Img imageRcv = camera.Grab();
+            cout << "set image ..." << endl << flush;
+            msg.SetImage(&imageRcv);
+            cout << "Send msg to mon: " << msg.ToString() << endl << flush;
 
-        rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-        monitor.Write(msg); // The message is deleted with the Write
-        rt_mutex_release(&mutex_monitor);
+            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(&msg); // The message is deleted with the Write
+            rt_mutex_release(&mutex_monitor);
+        }
     }
 }
+
+void Tasks::CloseCameraTask(void *arg){
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task startCamera starts here                                                    */
+    /**************************************************************************************/
+    while (1) {
+        
+        rt_sem_p(&sem_closeCamera, TM_INFINITE);
+        cout << "Close camera ...";
+        rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+        camera.Close();
+        rt_mutex_release(&mutex_camera);
+        //cout << msgSend->GetID();
+  
+        cout << "Camera has closed !! " << endl;
+
+        rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+        cameraStarted = 0;
+        rt_mutex_release(&mutex_cameraStarted);
+        
+        cout << "OK baby, camera off now!" << endl << flush;
+        
+    }
+}
+
 /**
  * Write a message in a given queue
  * @param queue Queue identifier
