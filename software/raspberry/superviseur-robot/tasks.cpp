@@ -28,11 +28,11 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TSTARTROBOTWITHWD 19
 #define PRIORITY_TCAMERA 21
-#define PRIORITY_TBATTERYCHECKING 20
+#define PRIORITY_TBATTERYCHECKING 31
 #define PRIORITY_TLOSTTRACKING 20
 #define PRIORITY_TSENDIMGTOMON 23
-#define PRIORITY_TARENA 22
-#define PRIORITY_TPOSITION 23
+#define PRIORITY_TARENA 24
+#define PRIORITY_TPOSITION 26
 
 
 /*
@@ -942,26 +942,17 @@ void Tasks::ShowPositionTask(void *arg){
                 msgPos.SetID(MESSAGE_CAM_POSITION);
                 msgPos.SetPosition(robot);
                 cout << msgPos.ToString() << endl << flush;
-                /*
-                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-                monitor.Write(&msgPos); // The message is deleted with the Write
-                rt_mutex_release(&mutex_monitor);
-                */
-
-                
+    
             }else{
                 msgPos = MessagePosition();
-                /*
-                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
-                monitor.Write(&msgPos); // The message is deleted with the Write
-                rt_mutex_release(&mutex_monitor);
-                */
+     
             }
 
             cout << "Renvoi image to monitor" << endl << flush;
 
             msgImg.SetImage(&imageRcv);
             rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(msgPos.Copy()); // The message is deleted with the Write
             monitor.Write(&msgImg); // The message is deleted with the Write
             rt_mutex_release(&mutex_monitor);
 
