@@ -68,6 +68,8 @@ private:
     int robotStarted = 0;
     int cameraStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
+    Arena mainArena;
+    int confirmArena = 0;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -83,6 +85,7 @@ private:
     RT_TASK th_startCamera;
     RT_TASK th_sendImgToMon;
     RT_TASK th_closeCamera;
+    RT_TASK th_findArena;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -104,6 +107,8 @@ private:
     RT_SEM sem_startCamera;
     RT_SEM sem_closeCamera;
     RT_SEM sem_cameraOk;
+    RT_SEM sem_findArena;
+    RT_SEM sem_confirmArena;
     
 
     /**********************************************************************/
@@ -156,12 +161,12 @@ private:
     void CheckBatteryTask(void *arg);
     
     /**
-    * @brief Thread handling control of the camera
+    * @brief Thread opening the camera
     */
     void StartCameraTask(void *arg);
   
     /**
-    * @brief Thread handling control of the camera
+    * @brief Thread closing the camera
     */
     void CloseCameraTask(void *arg);
     
@@ -169,6 +174,11 @@ private:
      * @brief Thread sending image from camera to monitor.
      */
     void SendImgToMonTask(void *arg);
+    
+    /**
+     * @brief Thread finding the arena.
+     */
+    void FindArenaTask(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
