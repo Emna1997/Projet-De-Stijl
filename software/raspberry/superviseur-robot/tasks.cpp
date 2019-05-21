@@ -29,6 +29,8 @@
 #define PRIORITY_TBATTERYCHECKING 20
 #define PRIORITY_TLOSTTRACKING 20
 #define PRIORITY_TSENDIMGTOMON 23
+#define PRIORITY_TARENA 22
+#define PRIORITY_TPOSITION 23
 
 
 /*
@@ -126,6 +128,10 @@ void Tasks::Init() {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_sem_create(&sem_showPosition, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    
  
     cout << "Semaphores created successfully" << endl << flush;
 
@@ -176,10 +182,14 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_findArena, "th_findArena", 0, PRIORITY_TCAMERA, 0)) {
+    if (err = rt_task_create(&th_findArena, "th_findArena", 0, PRIORITY_TARENA, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_showPosition, "th_showPosition", 0, PRIORITY_TPOSITION, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -250,6 +260,10 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_start(&th_showPosition, (void(*)(void*)) & Tasks::ShowPositionTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    
     cout << "Tasks launched" << endl << flush;
 }
 
@@ -373,7 +387,10 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         } else if(msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)){
             rt_sem_v(&sem_confirmArena);
             confirmArena = 0;
-        }
+        } else if(msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START)){
+            rt_sem_v(&sem_showPosition); 
+            findPosition = 1;
+        } 
 
             
         delete(msgRcv); // mus be deleted manually, no consumer
@@ -704,7 +721,7 @@ void Tasks::FindArenaTask(void *arg){
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
     /**************************************************************************************/
-    /* The task startCamera starts here                                                    */
+    /* The task findArena starts here                                                    */
     /**************************************************************************************/
     while (1) {
         
@@ -737,10 +754,10 @@ void Tasks::FindArenaTask(void *arg){
             
             rt_sem_p(&sem_confirmArena,TM_INFINITE);
             if(confirmArena==1){
-                cout << "Saving arena .. " << endl << flush;
+                cout << "Saving arena .. SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS" << endl << flush;
                 mainArena = arena;
             }else{
-                cout << "Deleting arena .. " << endl << flush;
+                cout << "Deleting arena .. DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" << endl << flush;
             }
 
         }
@@ -750,15 +767,81 @@ void Tasks::FindArenaTask(void *arg){
         cameraStarted = 1;
         rt_mutex_release(&mutex_cameraStarted);
         
-        
-        
-        
-        
-        
     }
 }
 
+/**
+ * @brief Thread finding the arena.
+ */
+void Tasks::ShowPositionTask(void *arg){
+    MessageImg msgImg;
+    MessagePosition msgPos;
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task showPosition starts here                                                    */
+    /**************************************************************************************/
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    rt_sem_p(&sem_showPosition,TM_INFINITE);
+    
+    while (1) {
+        
+        cout << "Start computing position" << endl << flush;
+        
+        if(!mainArena.IsEmpty() & findPosition == 1) {
+            
+            Img imageRcv = camera.Grab();
+            std::list<Position> robots = imageRcv.SearchRobot(mainArena);
+     
+            if(!robots.empty()){
+                imageRcv.DrawAllRobots(robots);
+                /*
+                std::list<Position>::iterator it = robots.begin();
 
+                while(it != robots.end()){
+                    Position robot = *it;
+                    imageRcv.DrawRobot(robot);
+                    msgPos.SetPosition(robot);
+                    rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                    monitor.Write(&msgPos); // The message is deleted with the Write
+                    rt_mutex_release(&mutex_monitor);
+                } 
+                */
+                Position robot = robots.front(); 
+                cout << robot.ToString() << endl << flush;
+                imageRcv.DrawRobot(robot);
+                msgPos.SetID(MESSAGE_CAM_POSITION);
+                msgPos.SetPosition(robot);
+                cout << msgPos.ToString() << endl << flush;
+                /*
+                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                monitor.Write(&msgPos); // The message is deleted with the Write
+                rt_mutex_release(&mutex_monitor);
+                */
+
+                
+            }else{
+                msgPos = MessagePosition();
+                /*
+                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                monitor.Write(&msgPos); // The message is deleted with the Write
+                rt_mutex_release(&mutex_monitor);
+                */
+            }
+
+            cout << "Renvoi image to monitor" << endl << flush;
+
+            msgImg.SetImage(&imageRcv);
+            rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+            monitor.Write(&msgImg); // The message is deleted with the Write
+            rt_mutex_release(&mutex_monitor);
+
+        }
+    }
+    
+}
 /**
  * Write a message in a given queue
  * @param queue Queue identifier

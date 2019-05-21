@@ -70,6 +70,7 @@ private:
     int move = MESSAGE_ROBOT_STOP;
     Arena mainArena;
     int confirmArena = 0;
+    int findPosition = 0;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -86,6 +87,7 @@ private:
     RT_TASK th_sendImgToMon;
     RT_TASK th_closeCamera;
     RT_TASK th_findArena;
+    RT_TASK th_showPosition;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -109,6 +111,7 @@ private:
     RT_SEM sem_cameraOk;
     RT_SEM sem_findArena;
     RT_SEM sem_confirmArena;
+    RT_SEM sem_showPosition;
     
 
     /**********************************************************************/
@@ -179,6 +182,11 @@ private:
      * @brief Thread finding the arena.
      */
     void FindArenaTask(void *arg);
+    
+    /**
+     * @brief Thread handling the calcul position of the robot
+     */
+    void ShowPositionTask(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
