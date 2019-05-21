@@ -89,6 +89,14 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_arena, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_position, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -207,7 +215,7 @@ void Tasks::Init() {
     if (err = rt_task_create(&th_showPosition, "th_showPosition", 0, PRIORITY_TPOSITION, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }    
+    }  
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -289,7 +297,7 @@ void Tasks::Run() {
     if (err = rt_task_start(&th_showPosition, (void(*)(void*)) & Tasks::ShowPositionTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }    
+    }  
     cout << "Tasks launched" << endl << flush;
 }
 
@@ -415,7 +423,14 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             confirmArena = 0;
         } else if(msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START)){
             rt_sem_v(&sem_showPosition); 
+            rt_mutex_acquire(&mutex_position, TM_INFINITE);
             findPosition = 1;
+            rt_mutex_release(&mutex_position);
+        } else if(msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_STOP)){
+            rt_sem_v(&sem_showPosition); 
+            rt_mutex_acquire(&mutex_position, TM_INFINITE);
+            findPosition = 0;
+            rt_mutex_release(&mutex_position);
         } 
 
             
@@ -882,7 +897,10 @@ void Tasks::FindArenaTask(void *arg){
             rt_sem_p(&sem_confirmArena,TM_INFINITE);
             if(confirmArena==1){
                 cout << "Saving arena .. SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS" << endl << flush;
+                rt_mutex_acquire(&mutex_arena, TM_INFINITE);
                 mainArena = arena;
+                rt_mutex_release(&mutex_arena);
+                
             }else{
                 cout << "Deleting arena .. DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" << endl << flush;
             }
@@ -898,9 +916,11 @@ void Tasks::FindArenaTask(void *arg){
 }
 
 /**
- * @brief Thread finding the arena.
+ * @brief Thread handling the calcul position of the robot.
  */
 void Tasks::ShowPositionTask(void *arg){
+    int status;
+    Arena arena;
     MessageImg msgImg;
     MessagePosition msgPos;
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
@@ -911,16 +931,23 @@ void Tasks::ShowPositionTask(void *arg){
     /* The task showPosition starts here                                                    */
     /**************************************************************************************/
     rt_task_set_periodic(NULL, TM_NOW, 100000000);
-    rt_sem_p(&sem_showPosition,TM_INFINITE);
-    
+
     while (1) {
+        rt_sem_p(&sem_showPosition,TM_INFINITE);
+
+        rt_mutex_acquire(&mutex_position, TM_INFINITE);
+        status = findPosition;
+        rt_mutex_release(&mutex_position);
         
-        cout << "Start computing position" << endl << flush;
-        
-        if(!mainArena.IsEmpty() & findPosition == 1) {
-            
+        while(!mainArena.IsEmpty() & status == 1) {
+            cout << "Start computing position" << endl << flush;
+
             Img imageRcv = camera.Grab();
-            std::list<Position> robots = imageRcv.SearchRobot(mainArena);
+            rt_mutex_acquire(&mutex_arena, TM_INFINITE);
+            arena = mainArena;
+            rt_mutex_release(&mutex_arena);
+            
+            std::list<Position> robots = imageRcv.SearchRobot(arena);
      
             if(!robots.empty()){
                 imageRcv.DrawAllRobots(robots);
@@ -960,6 +987,8 @@ void Tasks::ShowPositionTask(void *arg){
     }
     
 }
+
+
 /**
  * Write a message in a given queue
  * @param queue Queue identifier

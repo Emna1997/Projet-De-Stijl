@@ -92,6 +92,7 @@ private:
     RT_TASK th_closeCamera;
     RT_TASK th_findArena;
     RT_TASK th_showPosition;
+    RT_TASK th_stopPosition;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -102,6 +103,8 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_camera;
     RT_MUTEX mutex_cameraStarted;
+    RT_MUTEX mutex_arena;
+    RT_MUTEX mutex_position;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -118,7 +121,7 @@ private:
     RT_SEM sem_findArena;
     RT_SEM sem_confirmArena;
     RT_SEM sem_showPosition;
-    
+
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -197,7 +200,7 @@ private:
     void FindArenaTask(void *arg);
     
     /**
-     * @brief Thread handling the calcul position of the robot
+     * @brief Thread handling the position of the robot
      */
     void ShowPositionTask(void *arg);
     
