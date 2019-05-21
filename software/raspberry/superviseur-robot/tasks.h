@@ -66,8 +66,10 @@ private:
     ComRobot robot;
     Camera camera;
     int robotStarted = 0;
+    int robotStartedWithWD = 0;
     int cameraStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
+    int stop_order = 0;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -76,7 +78,9 @@ private:
     RT_TASK th_sendToMon;
     RT_TASK th_receiveFromMon;
     RT_TASK th_openComRobot;
+    RT_TASK th_control;
     RT_TASK th_startRobot;
+    RT_TASK th_startRobotWithWD;
     RT_TASK th_move;
     RT_TASK th_batterychecking;
     RT_TASK th_losttracking;
@@ -100,7 +104,9 @@ private:
     RT_SEM sem_barrier;
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
+    RT_SEM sem_control;
     RT_SEM sem_startRobot;
+    RT_SEM sem_startRobotWithWD;
     RT_SEM sem_startCamera;
     RT_SEM sem_closeCamera;
     RT_SEM sem_cameraOk;
@@ -140,10 +146,17 @@ private:
      */
     void LostTrackingTask(void *arg);
     
+    void ControlTask(void *arg);
+    
     /**
      * @brief Thread starting the communication with the robot.
      */
     void StartRobotTask(void *arg);
+    
+     /**
+     * @brief Thread starting the communication with WD with the robot.
+     */
+    void StartRobotWithWDTask(void *arg);
     
     /**
      * @brief Thread handling control of the robot.
